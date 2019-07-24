@@ -505,6 +505,11 @@ LJFOLDF(kfold_strref_snew)
 {
   PHIBARRIER(fleft);
   if (irref_isk(fins->op2) && fright->i == 0) {
+    /*
+    ** Temporary stub for LuaJIT bug #505 https://github.com/LuaJIT/LuaJIT/issues/505
+    ** Follow-up tracker is #4376
+    */
+    return NEXTFOLD;
     return fleft->op1;  /* strref(snew(ptr, len), 0) ==> ptr */
   } else {
     /* Reassociate: strref(snew(strref(str, a), len), b) ==> strref(str, a+b) */

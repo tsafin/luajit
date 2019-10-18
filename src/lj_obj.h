@@ -473,6 +473,7 @@ typedef struct Node {
   TValue val;		/* Value object. Must be first field. */
   TValue key;		/* Key object. */
   MRef next;		/* Hash chain. */
+  MRef prev;		/* Hash chain. */
 #if !LJ_GC64
   MRef freetop;		/* Top of free elements (stored in t->node[0]). */
 #endif
@@ -499,6 +500,7 @@ typedef struct GCtab {
 #define tabref(r)	(&gcref((r))->tab)
 #define noderef(r)	(mref((r), Node))
 #define nextnode(n)	(mref((n)->next, Node))
+#define prevnode(n)	(mref((n)->prev, Node))
 #if LJ_GC64
 #define getfreetop(t, n)	(noderef((t)->freetop))
 #define setfreetop(t, n, v)	(setmref((t)->freetop, (v)))

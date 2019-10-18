@@ -82,6 +82,7 @@ static LJ_AINLINE void clearhpart(GCtab *t)
   for (i = 0; i <= hmask; i++) {
     Node *n = &node[i];
     setmref(n->next, NULL);
+    setmref(n->prev, NULL);
     setnilV(&n->key);
     setnilV(&n->val);
   }
@@ -210,9 +211,11 @@ GCtab * LJ_FASTCALL lj_tab_dup(lua_State *L, const GCtab *kt)
       Node *kn = &knode[i];
       Node *n = &node[i];
       Node *next = nextnode(kn);
+      Node *prev = prevnode(kn);
       /* Don't use copyTV here, since it asserts on a copy of a dead key. */
       n->val = kn->val; n->key = kn->key;
       setmref(n->next, next == NULL? next : (Node *)((char *)next + d));
+      setmref(n->prev, prev == NULL? prev : (Node *)((char *)prev + d));
     }
   }
   return t;
@@ -405,6 +408,8 @@ cTValue * LJ_FASTCALL lj_tab_getinth(GCtab *t, int32_t key)
   Node *n;
   k.n = (lua_Number)key;
   n = hashnum(t, &k);
+  if (prevnode(n) != NULL)
+    return NULL;
   do {
     if (tvisnum(&n->key) && n->key.n == k.n)
       return &n->val;
@@ -415,6 +420,8 @@ cTValue * LJ_FASTCALL lj_tab_getinth(GCtab *t, int32_t key)
 cTValue *lj_tab_getstr(GCtab *t, GCstr *key)
 {
   Node *n = hashstr(t, key);
+  if (prevnode(n) != NULL)
+    return NULL;
   do {
     if (tvisstr(&n->key) && strV(&n->key) == key)
       return &n->val;
@@ -446,6 +453,8 @@ cTValue *lj_tab_get(lua_State *L, GCtab *t, cTValue *key)
     Node *n;
   genlookup:
     n = hashkey(t, key);
+    if (prevnode(n) != NULL)
+      return niltv(L);
     do {
       if (lj_obj_equal(&n->key, key))
 	return &n->val;
@@ -460,9 +469,12 @@ cTValue *lj_tab_get(lua_State *L, GCtab *t, cTValue *key)
 TValue *lj_tab_newkey(lua_State *L, GCtab *t, cTValue *key)
 {
   Node *n = hashkey(t, key);
+  Node *predcessor = prevnode(n);
+  Node *nn = nextnode(n);
+
   if (!tvisnil(&n->val) || t->hmask == 0) {
     Node *nodebase = noderef(t->node);
-    Node *collide, *freenode = getfreetop(t, nodebase);
+    Node *freenode = getfreetop(t, nodebase);
     lua_assert(freenode >= nodebase && freenode <= nodebase+t->hmask+1);
     do {
       if (freenode == nodebase) {  /* No free node found? */
@@ -472,83 +484,34 @@ TValue *lj_tab_newkey(lua_State *L, GCtab *t, cTValue *key)
     } while (!tvisnil(&(--freenode)->key));
     setfreetop(t, nodebase, freenode);
     lua_assert(freenode != &G(L)->nilnode);
-    collide = hashkey(t, &n->key);
-    if (collide != n) {  /* Colliding node not the main node? */
-      Node *nn;
-      while (noderef(collide->next) != n)  /* Find predecessor. */
-	collide = nextnode(collide);
-      setmref(collide->next, freenode);  /* Relink chain. */
-      /* Copy colliding node into free node and free main node. */
-      freenode->val = n->val;
-      freenode->key = n->key;
-      freenode->next = n->next;
-      setmref(n->next, NULL);
-      setnilV(&n->val);
-      /*
-      ** Nodes after n might have n as their main node, and need rechaining
-      ** back onto n. We make use of the following property of tables: for all
-      ** nodes m, at least one of the following four statements is true:
-      **  1. tvisnil(&m->key)  NB: tvisnil(&m->val) is a stronger statement
-      **  2. tvisstr(&m->key)
-      **  3. tvisstr(&main(m)->key)
-      **  4. main(m) == main(main(m))
-      ** Initially, we need to rechain any nn which has main(nn) == n. As
-      ** main(n) != n (because collide != n earlier), main(nn) == n requires
-      ** either statement 2 or statement 3 to be true about nn.
-      */
-      if (!tvisstr(&n->key)) {
-	/* Statement 3 is not true, so only need to consider string keys. */
-	while ((nn = nextnode(freenode))) {
-	  if (tvisstr(&nn->key) && !tvisnil(&nn->val) &&
-	      hashstr(t, strV(&nn->key)) == n) {
-	    goto rechain;
-	  }
-	  freenode = nn;
-	}
-      } else {
-	/* Statement 3 is true, so need to consider all types of key. */
-	while ((nn = nextnode(freenode))) {
-	  if (!tvisnil(&nn->val) && hashkey(t, &nn->key) == n) {
-	  rechain:
-	    freenode->next = nn->next;
-	    nn->next = n->next;
-	    setmref(n->next, nn);
-	    /*
-	    ** Rechaining one node onto n creates a new dilemma: we now need
-	    ** to rechain any nn which has main(nn) == n OR has main(nn) equal
-	    ** to any node which has already been rechained. Furthermore, at
-	    ** least one of n and n->next will have a string key, so all types
-	    ** of nn key need to be considered. Rather than testing whether
-	    ** main(nn) definitely _is_ in the new chain, we test whether it
-	    ** might _not_ be in the old chain, and if so re-link it into
-	    ** the correct chain.
-	    */
-	    while ((nn = nextnode(freenode))) {
-	      if (!tvisnil(&nn->val)) {
-		Node *mn = hashkey(t, &nn->key);
-		if (mn != freenode && mn != nn) {
-		  freenode->next = nn->next;
-		  nn->next = mn->next;
-		  setmref(mn->next, nn);
-		} else {
-		  freenode = nn;
-		}
-	      } else {
-		freenode = nn;
-	      }
-	    }
-	    break;
-	  } else {
-	    freenode = nn;
-	  }
-	}
-      }
-    } else {  /* Otherwise use free node. */
-      setmrefr(freenode->next, n->next);  /* Insert into chain. */
-      setmref(n->next, freenode);
-      n = freenode;
+
+    /* Shift key and value from the master node to the next one (freenode). */
+    freenode->val = n->val;
+    freenode->key = n->key;
+    setnilV(&n->val);
+    /* Link new node with its successor. */
+    if (nn != NULL) {
+      setmref(freenode->next, nn);
+      setmref(nn->prev, freenode);
     }
+    nn = freenode;
   }
+  if (predcessor != NULL) {
+    /*
+     * Master node is not the truly master - relink chain.
+     * So master's node predecessor should be a predecessor of
+     * a freenode and master node should not be linked with anyone.
+     */
+    setmref(n->prev, NULL);
+    setmref(n->next, NULL);
+  } else {
+    /* Make master node a predecessor of freenode. */
+    predcessor = n;
+  }
+  /* Link freenode with it's predecessor. */
+  setmref(predcessor->next, nn);
+  if (nn != NULL)
+    setmref(nn->prev, predcessor);
   n->key.u64 = key->u64;
   if (LJ_UNLIKELY(tvismzero(&n->key)))
     n->key.u64 = 0;
@@ -563,10 +526,12 @@ TValue *lj_tab_setinth(lua_State *L, GCtab *t, int32_t key)
   Node *n;
   k.n = (lua_Number)key;
   n = hashnum(t, &k);
-  do {
-    if (tvisnum(&n->key) && n->key.n == k.n)
-      return &n->val;
-  } while ((n = nextnode(n)));
+  if (prevnode(n) == NULL) {
+    do {
+      if (tvisnum(&n->key) && n->key.n == k.n)
+        return &n->val;
+    } while ((n = nextnode(n)));
+  }
   return lj_tab_newkey(L, t, &k);
 }
 
@@ -574,10 +539,12 @@ TValue *lj_tab_setstr(lua_State *L, GCtab *t, GCstr *key)
 {
   TValue k;
   Node *n = hashstr(t, key);
-  do {
-    if (tvisstr(&n->key) && strV(&n->key) == key)
-      return &n->val;
-  } while ((n = nextnode(n)));
+  if (prevnode(n) == NULL) {
+    do {
+      if (tvisstr(&n->key) && strV(&n->key) == key)
+        return &n->val;
+    } while ((n = nextnode(n)));
+  }
   setstrV(L, &k, key);
   return lj_tab_newkey(L, t, &k);
 }
@@ -602,10 +569,12 @@ TValue *lj_tab_set(lua_State *L, GCtab *t, cTValue *key)
     lj_err_msg(L, LJ_ERR_NILIDX);
   }
   n = hashkey(t, key);
-  do {
-    if (lj_obj_equal(&n->key, key))
-      return &n->val;
-  } while ((n = nextnode(n)));
+  if (prevnode(n) == NULL) {
+    do {
+      if (lj_obj_equal(&n->key, key))
+        return &n->val;
+    } while ((n = nextnode(n)));
+  }
   return lj_tab_newkey(L, t, key);
 }
 
@@ -629,11 +598,13 @@ static uint32_t keyindex(lua_State *L, GCtab *t, cTValue *key)
   }
   if (!tvisnil(key)) {
     Node *n = hashkey(t, key);
-    do {
-      if (lj_obj_equal(&n->key, key))
-	return t->asize + (uint32_t)(n - noderef(t->node));
-	/* Hash key indexes: [t->asize..t->asize+t->nmask] */
-    } while ((n = nextnode(n)));
+    if (prevnode(n) == NULL) {
+      do {
+        if (lj_obj_equal(&n->key, key))
+	  return t->asize + (uint32_t)(n - noderef(t->node));
+	  /* Hash key indexes: [t->asize..t->asize+t->nmask] */
+      } while ((n = nextnode(n)));
+    }
     if (key->u32.hi == 0xfffe7fff)  /* ITERN was despecialized while running. */
       return key->u32.lo - 1;
     lj_err_msg(L, LJ_ERR_NEXTIDX);

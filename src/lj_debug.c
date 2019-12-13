@@ -332,11 +332,11 @@ void lj_debug_shortname(char *out, GCstr *str, BCLine line)
     strcpy(out, src);
   } else {  /* Output [string "string"] or [builtin:name]. */
     size_t len;  /* Length, up to first control char. */
-    for (len = 0; len < LUA_IDSIZE-12; len++)
+    for (len = 0; len < LUA_IDSIZE_ERR-12; len++)
       if (((const unsigned char *)src)[len] < ' ') break;
     strcpy(out, line == ~(BCLine)0 ? "[builtin:" : "[string \""); out += 9;
     if (src[len] != '\0') {  /* Must truncate? */
-      if (len > LUA_IDSIZE-15) len = LUA_IDSIZE-15;
+      if (len > LUA_IDSIZE_ERR-15) len = LUA_IDSIZE_ERR-15;
       strncpy(out, src, len); out += len;
       strcpy(out, "..."); out += 3;
     } else {
@@ -651,8 +651,8 @@ void lj_debug_dumpstack(lua_State *L, SBuf *sb, const char *fmt, int depth)
 #endif
 
 /* Number of frames for the leading and trailing part of a traceback. */
-#define TRACEBACK_LEVELS1	12
-#define TRACEBACK_LEVELS2	10
+#define TRACEBACK_LEVELS1	LUA_TRACEBACK_LEVELS1
+#define TRACEBACK_LEVELS2	LUA_TRACEBACK_LEVELS2
 
 LUALIB_API void luaL_traceback (lua_State *L, lua_State *L1, const char *msg,
 				int level)

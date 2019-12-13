@@ -109,9 +109,19 @@
 #define LUA_MAXINPUT	512	/* Max. input line length. */
 #endif
 
+#ifndef LUA_TRACEBACK_LEVELS1
+# define LUA_TRACEBACK_LEVELS1	12
+#endif
+#ifndef LUA_TRACEBACK_LEVELS2
+# define LUA_TRACEBACK_LEVELS2	10
+#endif
+
 /* Note: changing the following defines breaks the Lua 5.1 ABI. */
-#define LUA_INTEGER	ptrdiff_t
-#define LUA_IDSIZE	60	/* Size of lua_Debug.short_src. */
+#define LUA_INTEGER		ptrdiff_t
+#ifndef LUA_IDSIZE
+# define LUA_IDSIZE		128 /* Size of lua_Debug.short_src. */
+#endif
+#define LUA_IDSIZE_ERR		60  /* Size of error message */
 /*
 ** Size of lauxlib and io.* on-stack buffers. Weird workaround to avoid using
 ** unreasonable amounts of stack space, but still retain ABI compatibility.

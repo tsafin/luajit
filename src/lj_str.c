@@ -222,6 +222,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
                       str_fastcmp(str, strdata(sx), len) == 0) {
 	/* Resurrect if dead. Can only happen with fixstring() (keywords). */
 	if (isdead(g, o)) flipwhite(o);
+	g->strhash_hit++;
 	return sx;  /* Return existing string. */
       }
       o = gcnext(o);
@@ -234,6 +235,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
                       memcmp(str, strdata(sx), len) == 0) {
 	/* Resurrect if dead. Can only happen with fixstring() (keywords). */
 	if (isdead(g, o)) flipwhite(o);
+	g->strhash_hit++;
 	return sx;  /* Return existing string. */
       }
       o = gcnext(o);
@@ -266,6 +268,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
 	    if (sx->hash == fh && sx->len == len && str_fastcmp(str, strdata(sx), len) == 0) {
 	      /* Resurrect if dead. Can only happen with fixstring() (keywords). */
 	      if (isdead(g, o)) flipwhite(o);
+	      g->strhash_hit++;
 	      return sx;  /* Return existing string. */
 	    }
 	    o = gcnext(o);
@@ -276,6 +279,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
 	    if (sx->hash == fh && sx->len == len && memcmp(str, strdata(sx), len) == 0) {
 	      /* Resurrect if dead. Can only happen with fixstring() (keywords). */
 	      if (isdead(g, o)) flipwhite(o);
+	      g->strhash_hit++;
 	      return sx;  /* Return existing string. */
 	    }
 	    o = gcnext(o);
@@ -293,6 +297,7 @@ GCstr *lj_str_new(lua_State *L, const char *str, size_t lenx)
     }
   }
 #endif
+  g->strhash_miss++;
   /* Nope, create a new string. */
   s = lj_mem_newt(L, sizeof(GCstr)+len+1, GCstr);
   newwhite(g, s);

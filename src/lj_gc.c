@@ -634,6 +634,7 @@ static void atomic(global_State *g, lua_State *L)
 static size_t gc_onestep(lua_State *L)
 {
   global_State *g = G(L);
+  g->gc.state_count[g->gc.state]++;
   switch (g->gc.state) {
   case GCSpause:
     gc_mark_start(g);  /* Start a new GC cycle by marking all GC roots. */
@@ -857,6 +858,8 @@ void *lj_mem_realloc(lua_State *L, void *p, GCSize osz, GCSize nsz)
   lua_assert((nsz == 0) == (p == NULL));
   lua_assert(checkptrGC(p));
   g->gc.total = (g->gc.total - osz) + nsz;
+  g->gc.allocated += nsz;
+  g->gc.freed += osz;
   return p;
 }
 
@@ -869,6 +872,7 @@ void * LJ_FASTCALL lj_mem_newgco(lua_State *L, GCSize size)
     lj_err_mem(L);
   lua_assert(checkptrGC(o));
   g->gc.total += size;
+  g->gc.allocated += size;
   setgcrefr(o->gch.nextgc, g->gc.root);
   setgcref(g->gc.root, o);
   newwhite(g, o);

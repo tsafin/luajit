@@ -571,6 +571,17 @@ typedef enum {
 #define basemt_obj(g, o)	((g)->gcroot[GCROOT_BASEMT+itypemap(o)])
 #define mmname_str(g, mm)	(strref((g)->gcroot[GCROOT_MMNAME+(mm)]))
 
+/* Garbage collector states. Order matters. */
+enum {
+  GCSpause,		/* Start a GC cycle and mark the root set.*/
+  GCSpropagate,		/* One gray object is processed. */
+  GCSatomic,		/* Atomic transition from mark to sweep phase. */
+  GCSsweepstring,	/* Sweep one chain of strings. */
+  GCSsweep,		/* Sweep few objects from root. */
+  GCSfinalize,		/* Finalize one userdata or cdata object. */
+  GCSmax
+};
+
 typedef struct GCState {
   GCSize total;		/* Memory currently allocated. */
   GCSize threshold;	/* Memory threshold. */
@@ -589,6 +600,15 @@ typedef struct GCState {
   GCSize estimate;	/* Estimate of memory actually in use. */
   MSize stepmul;	/* Incremental GC step granularity. */
   MSize pause;		/* Pause between successive GC cycles. */
+
+  size_t freed;		/* Total amount of freed memory. */
+  size_t allocated;	/* Total amount of allocated memory. */
+  size_t state_count[GCSmax]; /* Count of incremental GC steps per state. */
+  size_t tabnum;	/* Amount of allocated table objects. */
+  size_t udatanum;	/* Amount of allocated udata objects. */
+#ifdef LJ_HASFFI
+  size_t cdatanum;	/* Amount of allocated cdata objects. */
+#endif
 } GCState;
 
 /* Global state, shared by all threads of a Lua universe. */
@@ -602,22 +622,24 @@ typedef struct global_State {
     BloomFilter next[2];
   } strbloom;
 #endif
+  size_t strhash_hit;	/* Strings amount found in string hash. */
+  size_t strhash_miss;	/* Strings amount allocated and put into string hash. */
   lua_Alloc allocf;	/* Memory allocator. */
   void *allocd;		/* Memory allocator data. */
   GCState gc;		/* Garbage collector. */
-  volatile int32_t vmstate;  /* VM state or current JIT code trace number. */
   SBuf tmpbuf;		/* Temporary string buffer. */
   GCstr strempty;	/* Empty string. */
   uint8_t stremptyz;	/* Zero terminator of empty string. */
   uint8_t hookmask;	/* Hook mask. */
   uint8_t dispatchmode;	/* Dispatch mode. */
   uint8_t vmevmask;	/* VM event mask. */
+  int32_t hookcount;	/* Instruction hook countdown. */
   GCRef mainthref;	/* Link to main thread. */
   TValue registrytv;	/* Anchor for registry. */
-  TValue tmptv, tmptv2;	/* Temporary TValues. */
+  TValue tmptv2, tmptv;	/* Temporary TValues. */
   Node nilnode;		/* Fallback 1-element hash part (nil key and value). */
   GCupval uvhead;	/* Head of double-linked list of all open upvalues. */
-  int32_t hookcount;	/* Instruction hook countdown. */
+  volatile int32_t vmstate;  /* VM state or current JIT code trace number. */
   int32_t hookcstart;	/* Start count for instruction hook counter. */
   lua_Hook hookf;	/* Hook function. */
   lua_CFunction wrapf;	/* Wrapper for C function calls. */

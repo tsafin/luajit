@@ -48,6 +48,7 @@
 #include "lj_strfmt.c"
 #include "lj_strfmt_num.c"
 #include "lj_api.c"
+#include "lj_mapi.c"
 #include "lj_profile.c"
 #include "lj_lex.c"
 #include "lj_parse.c"
@@ -93,5 +94,6 @@
 #include "lib_bit.c"
 #include "lib_jit.c"
 #include "lib_ffi.c"
+#include "lib_misc.c"
 #include "lib_init.c"
 

@@ -805,6 +805,13 @@ LJ_NOINLINE void lj_err_argt(lua_State *L, int narg, int tt)
   lj_err_argtype(L, narg, lj_obj_typename[tt+1]);
 }
 
+LJ_NOINLINE void lj_err_fatal(lua_State *L, BCIns *pc)
+{
+  if (G(L)->panic)
+    G(L)->panic(L);
+  abort();
+}
+
 /* -- Public error handling API ------------------------------------------- */
 
 LUA_API lua_CFunction lua_atpanic(lua_State *L, lua_CFunction panicf)

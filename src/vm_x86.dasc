@@ -489,6 +489,14 @@
 static void build_subroutines(BuildCtx *ctx)
 {
   |.code_sub
+  |//-----------------------------------------------------------------------
+  |//-- Fatal handling -----------------------------------------------------
+  |//-----------------------------------------------------------------------
+  |->vm_fatal:
+  |  mov CARG1d, L:RB			// Load current Lua coroutine.
+  |  mov CARG2d, PC			// Save PC to the register.
+  |  mov SAVE_PC, PC			// Save PC on the stack (in cframe).
+  |  call extern lj_err_fatal		// No return.
   |
   |//-----------------------------------------------------------------------
   |//-- Return handling ----------------------------------------------------
@@ -559,6 +567,9 @@ static void build_subroutines(BuildCtx *ctx)
   |  xor eax, eax			// Ok return status for vm_pcall.
   |
   |->vm_leave_unw:
+  |  mov RA, L:RB->top			// RA can be freely used here.
+  |  cmp L:RB->base, RA			// Check if L->base <= L->top (RA).
+  |  ja ->vm_fatal
   |  restoreregs
   |  ret
   |
@@ -614,6 +625,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov GL:RB, L:DISPATCH->glref
   |  mov dword GL:RB->cur_L, L:DISPATCH
   |  mov dword GL:RB->vmstate, ~LJ_VMST_C
+  |  mov L:RB, L:DISPATCH		// Need for the check later.
   |  jmp ->vm_leave_unw
   |
   |->vm_unwind_rethrow:
@@ -784,6 +796,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov [DISPATCH+DISPATCH_GL(cur_L)], L:RB
   |  set_vmstate INTERP
   |  mov BASE, L:RB->base		// BASE = old base (used in vmeta_call).
+  |  cmp BASE, L:RB->top		// Check if L->base (BASE) <= L->top.
+  |  ja ->vm_fatal
   |  add PC, RA
   |  sub PC, BASE			// PC = frame delta + frame type
   |
@@ -3222,6 +3236,7 @@ static void build_subroutines(BuildCtx *ctx)
   |.if X64
   |  mov rax, CTSTATE->cb.gpr[0]
   |  movsd xmm0, qword CTSTATE->cb.fpr[0]
+  |  mov L:RB, L:RA			// Need for the check later.
   |  jmp ->vm_leave_unw
   |.else
   |  mov L:RB, SAVE_L
@@ -5428,6 +5443,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     }
     |  ja ->vm_growstack_c		// Need to grow stack.
     |  set_vmstate C
+    |  // Caveat: CARG2 may be BASE, but RD (eax) is fine.
+    |  cmp L:RB->base, RD		// Check if L->base <= L->top (RD).
+    |  ja ->vm_fatal
     if (op == BC_FUNCC) {
       |  call KBASEa			// (lua_State *L)
     } else {
@@ -5436,6 +5454,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     }
     |  // nresults returned in eax (RD).
     |  mov BASE, L:RB->base
+    |  cmp BASE, L:RB->top		// Check if L->base (BASE) <= L->top.
+    |  ja ->vm_fatal
     |  mov [DISPATCH+DISPATCH_GL(cur_L)], L:RB
     |  set_vmstate INTERP
     |  lea RA, [BASE+RD*8]

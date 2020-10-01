@@ -520,7 +520,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  jnz ->vm_returnp
   |
   |  // Return to C.
-  |  set_vmstate C
+  |  set_vmstate CFUNC
   |  and PC, -8
   |  sub PC, BASE
   |  neg PC				// Previous base = BASE - delta.
@@ -613,7 +613,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov L:DISPATCH, SAVE_L
   |  mov GL:RB, L:DISPATCH->glref
   |  mov dword GL:RB->cur_L, L:DISPATCH
-  |  mov dword GL:RB->vmstate, ~LJ_VMST_C
+  |  mov dword GL:RB->vmstate, ~LJ_VMST_CFUNC
   |  jmp ->vm_leave_unw
   |
   |->vm_unwind_rethrow:
@@ -885,6 +885,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov KBASE, LFUNC:KBASE->pc
   |  mov KBASE, [KBASE+PC2PROTO(k)]
   |  // BASE = base, RC = result, RB = meta base
+  |  set_vmstate LFUNC
   |  jmp RAa				// Jump to continuation.
   |
   |.if FFI
@@ -1405,6 +1406,7 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.macro .ffunc, name
   |->ff_ .. name:
+  |  set_vmstate FFUNC
   |.endmacro
   |
   |.macro .ffunc_1, name
@@ -2085,6 +2087,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  movzx RA, PC_RA
   |  not RAa				// Note: ~RA = -(RA+1)
   |  lea BASE, [BASE+RA*8]		// base = base - (RA+1)*8
+  |  set_vmstate LFUNC
   |  ins_next
   |
   |6:  // Fill up results with nil.
@@ -2929,7 +2932,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov KBASE, [KBASE+PC2PROTO(k)]
   |  mov L:RB->base, BASE
   |  mov dword [DISPATCH+DISPATCH_GL(jit_base)], 0
-  |  set_vmstate INTERP
+  |  set_vmstate LFUNC
   |  // Modified copy of ins_next which handles function header dispatch, too.
   |  mov RC, [PC]
   |  movzx RA, RCH
@@ -3199,7 +3202,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov FCARG1, CTSTATE
   |  call extern lj_ccallback_enter@8	// (CTState *cts, void *cf)
   |  // lua_State * returned in eax (RD).
-  |  set_vmstate INTERP
+  |  set_vmstate LFUNC
   |  mov BASE, L:RD->base
   |  mov RD, L:RD->top
   |  sub RD, BASE
@@ -4679,6 +4682,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
 
   case BC_CALL: case BC_CALLM:
     |  ins_A_C	// RA = base, (RB = nresults+1,) RC = nargs+1 | extra_nargs
+    |  set_vmstate INTERP // BC_CALL*: INTERP until a new BASE is setup
     if (op == BC_CALLM) {
       |  add NARGS:RD, MULTRES
     }
@@ -4702,6 +4706,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  cmp dword [RA-4], LJ_TFUNC
     |  jne ->vmeta_call
     |->BC_CALLT_Z:
+    |  set_vmstate INTERP // BC_CALLMT/BC_CALLT: INTERP until a new BASE is setup
     |  mov PC, [BASE-4]
     |  test PC, FRAME_TYPE
     |  jnz >7
@@ -4985,6 +4990,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  shl RA, 3
     }
     |1:
+    |  set_vmstate INTERP // BC_RET*: INTERP until the old BASE is restored
     |  mov PC, [BASE-4]
     |  mov MULTRES, RD			// Save nresults+1.
     |  test PC, FRAME_TYPE		// Check frame type marker.
@@ -5039,6 +5045,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  mov LFUNC:KBASE, [BASE-8]
     |  mov KBASE, LFUNC:KBASE->pc
     |  mov KBASE, [KBASE+PC2PROTO(k)]
+    |  set_vmstate LFUNC
     |  ins_next
     |
     |6:  // Fill up results with nil.
@@ -5326,6 +5333,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ins_AD  // BASE = new base, RA = framesize, RD = nargs+1
     |  mov KBASE, [PC-4+PC2PROTO(k)]
     |  mov L:RB, SAVE_L
+    |  set_vmstate LFUNC
     |  lea RA, [BASE+RA*8]		// Top of frame.
     |  cmp RA, L:RB->maxstack
     |  ja ->vm_growstack_f
@@ -5363,6 +5371,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  mov [RD-4], RB			// Store delta + FRAME_VARG.
     |  mov [RD-8], LFUNC:KBASE		// Store copy of LFUNC.
     |  mov L:RB, SAVE_L
+    |  set_vmstate LFUNC
     |  lea RA, [RD+RA*8]
     |  cmp RA, L:RB->maxstack
     |  ja ->vm_growstack_v		// Need to grow stack.
@@ -5427,7 +5436,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |.endif
     }
     |  ja ->vm_growstack_c		// Need to grow stack.
-    |  set_vmstate C
+    |  set_vmstate CFUNC
     if (op == BC_FUNCC) {
       |  call KBASEa			// (lua_State *L)
     } else {

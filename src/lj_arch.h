@@ -564,4 +564,18 @@
 #define LJ_52			0
 #endif
 
+/* Disable or enable the memory profiler. */
+#if defined(LUAJIT_DISABLE_MEMPROF) || defined(LJ_ARCH_NOMEMPROF)
+#define LJ_HASMEMPROF		0
+#else
+#define LJ_HASMEMPROF		1
+#endif
+
+/* Disable or enable the memory profiler. */
+#if defined(LUAJIT_DISABLE_THREAD_SAFE) || defined(LJ_ARCH_NOTHREAD_SAFE)
+#define LJ_THREAD_SAFE		0
+#else
+#define LJ_THREAD_SAFE		1
+#endif
+
 #endif

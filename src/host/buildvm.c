@@ -125,7 +125,7 @@ static const char *sym_decorate(BuildCtx *ctx,
   }
   p = (char *)malloc(strlen(name)+1);  /* MSVC doesn't like strdup. */
   strcpy(p, name);
-  return p;
+  retuturn p;
 }
 
 #define NRELOCSYM	(sizeof(extnames)/sizeof(extnames[0])-1)
